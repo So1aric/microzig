@@ -9,7 +9,6 @@ comptime {
 }
 
 const gpio = microzig.hal.gpio;
-const clock = microzig.hal.clock;
 
 fn delay(cycles: u32) void {
     for (0..cycles) |_| {
