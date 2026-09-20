@@ -8,7 +8,7 @@ comptime {
     _ = microzig.export_startup();
 }
 
-const clock = microzig.hal.clock;
+const clocks = microzig.hal.clocks;
 const gpio = microzig.hal.gpio;
 
 const PFIC = microzig.chip.peripherals.PFIC;
@@ -20,8 +20,8 @@ fn delay(cycles: u32) void {
 }
 
 pub fn main() !void {
-    clock.init();
-    clock.enable_gpio(.c);
+    clocks.init();
+    clocks.enable_gpio(.c);
 
     const pc2: gpio.Pin = .{ .port = .c, .number = 2 };
     pc2.apply(.{

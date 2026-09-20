@@ -9,7 +9,7 @@ comptime {
 }
 
 const cpu = microzig.cpu;
-const clock = microzig.hal.clock;
+const clocks = microzig.hal.clocks;
 const gpio = microzig.hal.gpio;
 
 const PFIC = microzig.chip.peripherals.PFIC;
@@ -33,8 +33,8 @@ fn delay(cycles: u32) void {
 }
 
 pub fn main() !void {
-    clock.init();
-    clock.enable_gpio(.c);
+    clocks.init();
+    clocks.enable_gpio(.c);
 
     pc2.apply(.{
         .mode = .{ .output = .general_purpose_open_drain },
