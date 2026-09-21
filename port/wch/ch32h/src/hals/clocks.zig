@@ -1,22 +1,29 @@
 const microzig = @import("microzig");
-const gpio = microzig.hal.gpio;
+const Peripherals = microzig.hal.Peripherals;
 
 const RCC = microzig.chip.peripherals.RCC;
 const FLASH = microzig.chip.peripherals.FLASH;
 
-pub fn enable_gpio(port: gpio.Pin.Port) void {
-    switch (port) {
-        .a => RCC.HB2PCENR.modify(.{ .IOPAEN = 1 }),
-        .b => RCC.HB2PCENR.modify(.{ .IOPBEN = 1 }),
-        .c => RCC.HB2PCENR.modify(.{ .IOPCEN = 1 }),
-        .d => RCC.HB2PCENR.modify(.{ .IOPDEN = 1 }),
-        .e => RCC.HB2PCENR.modify(.{ .IOPEEN = 1 }),
-        .f => RCC.HB2PCENR.modify(.{ .IOPFEN = 1 }),
-    }
-}
+pub fn enable(peripheral: Peripherals.All) void {
+    switch (peripheral) {
+        .AFIO => RCC.HB2PCENR.modify(.{ .AFIOEN = 1 }),
 
-pub fn enable_afio() void {
-    RCC.HB2PCENR.modify(.{ .AFIOEN = 1 });
+        .GPIOA => RCC.HB2PCENR.modify(.{ .IOPAEN = 1 }),
+        .GPIOB => RCC.HB2PCENR.modify(.{ .IOPBEN = 1 }),
+        .GPIOC => RCC.HB2PCENR.modify(.{ .IOPCEN = 1 }),
+        .GPIOD => RCC.HB2PCENR.modify(.{ .IOPDEN = 1 }),
+        .GPIOE => RCC.HB2PCENR.modify(.{ .IOPEEN = 1 }),
+        .GPIOF => RCC.HB2PCENR.modify(.{ .IOPFEN = 1 }),
+
+        .USART1 => RCC.HB2PCENR.modify(.{ .USART1EN = 1 }),
+        .USART2 => RCC.HB1PCENR.modify(.{ .USART2EN = 1 }),
+        .USART3 => RCC.HB1PCENR.modify(.{ .USART3EN = 1 }),
+        .USART4 => RCC.HB1PCENR.modify(.{ .USART4EN = 1 }),
+        .USART5 => RCC.HB1PCENR.modify(.{ .USART5EN = 1 }),
+        .USART6 => RCC.HB1PCENR.modify(.{ .USART6EN = 1 }),
+        .USART7 => RCC.HB1PCENR.modify(.{ .USART7EN = 1 }),
+        .USART8 => RCC.HB1PCENR.modify(.{ .USART8EN = 1 }),
+    }
 }
 
 // Initialize system clock. Currently set to HSE:

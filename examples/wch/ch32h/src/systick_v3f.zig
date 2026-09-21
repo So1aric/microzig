@@ -21,7 +21,7 @@ pub const microzig_options: microzig.Options = .{
     },
 };
 
-const pc2: gpio.Pin = .{ .port = .c, .number = 2 };
+const pc2: gpio.Pin = .{ .gpio = .GPIOC, .number = 2 };
 
 // By default, systick1 is allocated to v5f.
 // Here we demonstrate how to change this!
@@ -34,7 +34,6 @@ fn systick_handler() callconv(cpu.riscv_calling_convention) void {
 
 pub fn main() !void {
     clocks.init();
-    clocks.enable_gpio(.c);
 
     pc2.apply(.{
         .mode = .{ .output = .general_purpose_open_drain },

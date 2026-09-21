@@ -18,7 +18,7 @@ pub const microzig_options: microzig.Options = .{
     .interrupts = .{ .SW = sw_handler },
 };
 
-const pc2: gpio.Pin = .{ .port = .c, .number = 2 };
+const pc2: gpio.Pin = .{ .gpio = .GPIOC, .number = 2 };
 
 fn sw_handler() callconv(cpu.riscv_calling_convention) void {
     cpu.interrupt.clear_pending(.SW);
@@ -34,7 +34,6 @@ fn delay(cycles: u32) void {
 
 pub fn main() !void {
     clocks.init();
-    clocks.enable_gpio(.c);
 
     pc2.apply(.{
         .mode = .{ .output = .general_purpose_open_drain },

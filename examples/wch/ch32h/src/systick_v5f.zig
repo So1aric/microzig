@@ -18,7 +18,7 @@ pub const microzig_options: microzig.Options = .{
     },
 };
 
-const pc3: gpio.Pin = .{ .port = .c, .number = 3 };
+const pc3: gpio.Pin = .{ .gpio = .GPIOC, .number = 3 };
 const stk = time.systick0;
 
 fn systick_handler() callconv(cpu.riscv_calling_convention) void {

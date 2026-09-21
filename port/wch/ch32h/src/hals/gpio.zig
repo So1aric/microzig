@@ -1,34 +1,15 @@
 const microzig = @import("microzig");
-const peripherals = microzig.chip.peripherals;
+const clocks = microzig.hal.clocks;
+const Peripherals = microzig.hal.Peripherals;
 
 pub const Pin = struct {
-    port: Port,
+    gpio: Peripherals.GPIO,
     number: u4,
 
     pub const Config = struct {
         mode: Mode,
         speed: Speed,
         pull: Pull,
-    };
-
-    pub const Port = enum {
-        a,
-        b,
-        c,
-        d,
-        e,
-        f,
-
-        pub inline fn to_mem(self: @This()) @TypeOf(peripherals.GPIOA) {
-            return switch (self) {
-                .a => peripherals.GPIOA,
-                .b => peripherals.GPIOB,
-                .c => peripherals.GPIOC,
-                .d => peripherals.GPIOD,
-                .e => peripherals.GPIOE,
-                .f => peripherals.GPIOF,
-            };
-        }
     };
 
     pub const Mode = union(enum) {
@@ -63,7 +44,13 @@ pub const Pin = struct {
         disabled,
     };
 
+    pub fn enable(pin: Pin) void {
+        clocks.enable(Peripherals.to_peripheral(pin.gpio));
+    }
+
+    /// Enables this pin's port clock, then applies the given configuration.
     pub fn apply(pin: Pin, comptime cfg: Config) void {
+        pin.enable();
         pin.set_mode(cfg.mode);
         pin.set_speed(cfg.speed);
         pin.set_pull(cfg.pull);
@@ -74,7 +61,7 @@ pub const Pin = struct {
     }
 
     pub inline fn set_mode(pin: Pin, mode: Mode) void {
-        const port = pin.port.to_mem();
+        const port = Peripherals.to_reg(pin.gpio);
 
         const offset = (pin.number & 0b111) * 4;
         const cfg_bits = switch (mode) {
@@ -92,14 +79,14 @@ pub const Pin = struct {
     }
 
     pub inline fn set_speed(pin: Pin, speed: Speed) void {
-        const port = pin.port.to_mem();
+        const port = Peripherals.to_reg(pin.gpio);
 
         port.SPEED.raw &= ~(@as(u32, 0b11) << (pin.number * 2));
         port.SPEED.raw |= @as(u32, @backingInt(speed)) << (pin.number * 2);
     }
 
     pub inline fn set_pull(pin: Pin, pull: Pull) void {
-        const port = pin.port.to_mem();
+        const port = Peripherals.to_reg(pin.gpio);
 
         switch (pull) {
             .up => port.OUTDR.raw |= pin.mask(),
@@ -109,12 +96,12 @@ pub const Pin = struct {
     }
 
     pub inline fn read(pin: Pin) u1 {
-        const port = pin.port.to_mem();
+        const port = Peripherals.to_reg(pin.gpio);
         return if ((port.INDR.raw & pin.mask()) == 0) 0 else 1;
     }
 
     pub inline fn put(pin: Pin, level: u1) void {
-        const port = pin.port.to_mem();
+        const port = Peripherals.to_reg(pin.gpio);
 
         if (level == 1) {
             port.BSHR.raw = pin.mask();
@@ -124,7 +111,7 @@ pub const Pin = struct {
     }
 
     pub inline fn toggle(pin: Pin) void {
-        const port = pin.port.to_mem();
+        const port = Peripherals.to_reg(pin.gpio);
         port.OUTDR.raw ^= pin.mask();
     }
 };

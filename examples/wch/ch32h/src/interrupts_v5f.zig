@@ -21,7 +21,7 @@ pub fn main() !void {
     if (cpu.current_core() != .v5f)
         @panic("unexpected current core");
 
-    const pc3 = gpio.Pin{ .port = .c, .number = 3 };
+    const pc3 = gpio.Pin{ .gpio = .GPIOC, .number = 3 };
     pc3.apply(.{
         .mode = .{ .output = .general_purpose_open_drain },
         .speed = .max_50MHz,
