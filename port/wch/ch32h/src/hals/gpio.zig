@@ -68,8 +68,7 @@ pub const Pin = struct {
     pub inline fn set_af(pin: Pin, af: u4) void {
         clocks.enable(.AFIO);
 
-        const offset: u5 = @intCast((pin.number & 0b111) * 4);
-        const af_mask = @as(u32, 0b1111) << offset;
+        const af_mask = @as(u32, 0b1111) << pin.offset();
 
         const reg: *volatile u32 = switch (pin.gpio) {
             .GPIOA => if (pin.number >= 8) @ptrCast(&AFIO.GPIOA_AFHR) else @ptrCast(&AFIO.GPIOA_AFLR),
@@ -80,36 +79,39 @@ pub const Pin = struct {
             .GPIOF => if (pin.number >= 8) @ptrCast(&AFIO.GPIOF_AFHR) else @ptrCast(&AFIO.GPIOF_AFLR),
         };
 
-        reg.* = (reg.* & ~af_mask) | ((@as(u32, af) << offset) & af_mask);
+        reg.* = (reg.* & ~af_mask) | ((@as(u32, af) << pin.offset()) & af_mask);
     }
 
     inline fn mask(pin: Pin) u16 {
         return @as(u16, 1) << pin.number;
     }
 
+    inline fn offset(pin: Pin) u5 {
+        return @as(u5, pin.number & 0b111) * 4;
+    }
+
     pub inline fn set_mode(pin: Pin, mode: Mode) void {
         const port = Peripherals.to_reg(pin.gpio);
 
-        const offset = (pin.number & 0b111) * 4;
         const cfg_bits = switch (mode) {
             .input => |input| (@as(u32, @backingInt(input)) << 2),
             .output => |output| (@as(u32, @backingInt(output)) << 2) | 1,
         };
 
         if (pin.number < 8) {
-            port.CFGLR.raw &= ~(@as(u32, 0b1111) << offset);
-            port.CFGLR.raw |= cfg_bits << offset;
+            port.CFGLR.raw &= ~(@as(u32, 0b1111) << pin.offset());
+            port.CFGLR.raw |= cfg_bits << pin.offset();
         } else {
-            port.CFGHR.raw &= ~(@as(u32, 0b1111) << offset);
-            port.CFGHR.raw |= cfg_bits << offset;
+            port.CFGHR.raw &= ~(@as(u32, 0b1111) << pin.offset());
+            port.CFGHR.raw |= cfg_bits << pin.offset();
         }
     }
 
     pub inline fn set_speed(pin: Pin, speed: Speed) void {
         const port = Peripherals.to_reg(pin.gpio);
 
-        port.SPEED.raw &= ~(@as(u32, 0b11) << (pin.number * 2));
-        port.SPEED.raw |= @as(u32, @backingInt(speed)) << (pin.number * 2);
+        port.SPEED.raw &= ~(@as(u32, 0b11) << (@as(u5, pin.number) * 2));
+        port.SPEED.raw |= @as(u32, @backingInt(speed)) << (@as(u5, pin.number) * 2);
     }
 
     pub inline fn set_pull(pin: Pin, pull: Pull) void {

@@ -84,6 +84,7 @@ const Systick = struct {
         }
     }
 
+    /// This function assumes systick in up-mode.
     pub inline fn busy_delay(stk: Systick, cycles: u32) void {
         const begin = stk.get_cnt();
         while (stk.get_cnt() -% begin < cycles) {}
