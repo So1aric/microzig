@@ -2,6 +2,8 @@ const microzig = @import("microzig");
 const clocks = microzig.hal.clocks;
 const Peripherals = microzig.hal.Peripherals;
 
+const AFIO = microzig.chip.peripherals.AFIO;
+
 pub const Pin = struct {
     gpio: Peripherals.GPIO,
     number: u4,
@@ -10,6 +12,10 @@ pub const Pin = struct {
         mode: Mode,
         speed: Speed,
         pull: Pull,
+        /// Alternate function number (AFR value) for the pin, written to the
+        /// AFIO multiplexing register. Only meaningful with a
+        /// `Mode.Output.alternate_function_*` mode.
+        alternate_function: ?u4 = null,
     };
 
     pub const Mode = union(enum) {
@@ -48,12 +54,33 @@ pub const Pin = struct {
         clocks.enable(Peripherals.to_peripheral(pin.gpio));
     }
 
-    /// Enables this pin's port clock, then applies the given configuration.
     pub fn apply(pin: Pin, comptime cfg: Config) void {
         pin.enable();
         pin.set_mode(cfg.mode);
         pin.set_speed(cfg.speed);
         pin.set_pull(cfg.pull);
+        if (cfg.alternate_function) |af| pin.set_af(af);
+    }
+
+    /// Selects the alternate function of this pin by writing its 4-bit AFR
+    /// field in the AFIO multiplexing registers. Refer to `CH32H417DS0` for
+    /// the correct value.
+    pub inline fn set_af(pin: Pin, af: u4) void {
+        clocks.enable(.AFIO);
+
+        const offset: u5 = @intCast((pin.number & 0b111) * 4);
+        const af_mask = @as(u32, 0b1111) << offset;
+
+        const reg: *volatile u32 = switch (pin.gpio) {
+            .GPIOA => if (pin.number >= 8) @ptrCast(&AFIO.GPIOA_AFHR) else @ptrCast(&AFIO.GPIOA_AFLR),
+            .GPIOB => if (pin.number >= 8) @ptrCast(&AFIO.GPIOB_AFHR) else @ptrCast(&AFIO.GPIOB_AFLR),
+            .GPIOC => if (pin.number >= 8) @ptrCast(&AFIO.GPIOC_AFHR) else @ptrCast(&AFIO.GPIOC_AFLR),
+            .GPIOD => if (pin.number >= 8) @ptrCast(&AFIO.GPIOD_AFHR) else @ptrCast(&AFIO.GPIOD_AFLR),
+            .GPIOE => if (pin.number >= 8) @ptrCast(&AFIO.GPIOE_AFHR) else @ptrCast(&AFIO.GPIOE_AFLR),
+            .GPIOF => if (pin.number >= 8) @ptrCast(&AFIO.GPIOF_AFHR) else @ptrCast(&AFIO.GPIOF_AFLR),
+        };
+
+        reg.* = (reg.* & ~af_mask) | ((@as(u32, af) << offset) & af_mask);
     }
 
     inline fn mask(pin: Pin) u16 {

@@ -30,6 +30,7 @@ const examples = [_][]const u8{
     "blinky",
     "interrupts",
     "systick",
+    "usart",
 };
 
 pub fn build(b: *std.Build) void {

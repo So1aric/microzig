@@ -26,6 +26,25 @@ pub fn enable(peripheral: Peripherals.All) void {
     }
 }
 
+pub const ClockSpeeds = struct {
+    sysclk: u32,
+    hclk: u32,
+    pclk1: u32,
+    pclk2: u32,
+};
+
+/// Returns the current clock frequencies.
+///
+/// TODO: derive these from the RCC registers once the CH32H417 clock tree
+/// (PLLMUL / PLL_SRC_DIV / PLLSRC / SYSPLL_SEL / HPRE / PPRE encodings) is
+/// modelled here.
+///
+/// NOTE: this should be cached.
+pub fn get_freqs() ClockSpeeds {
+    const freq = 100_000_000;
+    return .{ .sysclk = freq, .hclk = freq, .pclk1 = freq, .pclk2 = freq };
+}
+
 // Initialize system clock. Currently set to HSE:
 //   - V5F     400MHz
 //   - V3F     100MHz

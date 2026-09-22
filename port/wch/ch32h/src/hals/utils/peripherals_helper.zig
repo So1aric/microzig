@@ -1,5 +1,4 @@
-// This file is copied from stm32 port.
-// TODO: I think all stm32-like MCUs (gd32, ch32) could use this.
+// This file is based on the stm32 port.
 
 const std = @import("std");
 const microzig = @import("microzig");
@@ -28,14 +27,6 @@ pub fn create_peripheral_enum(comptime bases_name: []const []const u8) type {
     return @Enum(usize, .exhaustive, field_names, field_values[0..]);
 }
 
-/// Creates a sub-enum of `Parent` (usually the total peripheral enum created
-/// by `create_peripheral_enum`), carving out a group of same-typed
-/// peripherals. The enum keeps the parent's backing values, so values can be
-/// converted back with `@fromBackingInt(@backingInt(x))`.
-///
-/// `keep_name` filters parent enum tags by substring match; `match_type`
-/// additionally filters by register block type name (useful when same-named
-/// peripherals have different register types, e.g. TIM variants on stm32).
 pub fn sub_peripheral_enum(comptime Parent: type, comptime keep_name: []const []const u8, comptime match_type: ?[]const u8) type {
     var field_names: []const []const u8 = &.{};
     var field_values: []const usize = &.{};
@@ -57,8 +48,7 @@ pub fn sub_peripheral_enum(comptime Parent: type, comptime keep_name: []const []
         @compileError("sub_peripheral_enum: no peripheral of " ++ @typeName(Parent) ++ " matches the given criteria");
     }
 
-    // to_reg() relies on every peripheral in the group sharing the same
-    // register block type.
+    // to_reg() relies on every peripheral in the group sharing the same register block type.
     const first_regs = @TypeOf(@field(peripherals, field_names[0]));
     for (field_names[1..]) |field_name| {
         if (@TypeOf(@field(peripherals, field_name)) != first_regs) {
@@ -86,12 +76,7 @@ fn Regs(comptime E: type) type {
 }
 
 /// Resolves a (sub-)peripheral enum value to its register block.
-/// Compiles down to a runtime address selection; zero cost.
-///
-/// ```zig
-/// const port = Peripherals.to_reg(pin.gpio);
-/// port.BSHR.raw = mask;
-/// ```
+/// Should compiles down to a runtime address selection; zero cost.
 pub inline fn to_reg(id: anytype) Regs(@TypeOf(id)) {
     switch (id) {
         inline else => |tag| return @field(peripherals, @tagName(tag)),
