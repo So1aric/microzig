@@ -3,15 +3,37 @@ const microzig = @import("microzig");
 
 pub const panic = microzig.panic;
 
+const usart = microzig.hal.usart;
+const usart1 = usart.usart1;
+
 pub const std_options = microzig.std_options(.{ .logFn = usart.log });
+
+pub const microzig_options: microzig.Options = .{
+    .interrupts = .{ .USART1 = on_usart1 },
+};
 
 comptime {
     _ = microzig.export_startup();
 }
 
+const cpu = microzig.cpu;
 const clocks = microzig.hal.clocks;
-const usart = microzig.hal.usart;
-const usart1 = usart.usart1;
+
+// Shared between the ISR and main.
+var rx_byte: u8 = 0;
+var rx_pending: bool = false;
+
+fn on_usart1() callconv(cpu.riscv_calling_convention) void {
+    // Handle (and clear) ORE/FE/NE/PE first; the STATR->DATAR sequence would
+    // otherwise swallow the byte below.
+    usart1.check_errors() catch return;
+
+    if (usart1.is_readable()) {
+        @atomicStore(u8, &rx_byte, usart1.read_byte(), .release);
+        @atomicStore(bool, &rx_pending, true, .release);
+    }
+    if (usart1.is_idle()) usart1.clear_idle();
+}
 
 pub fn main() !void {
     clocks.init();
@@ -22,19 +44,21 @@ pub fn main() !void {
     });
     usart1.init_logger();
 
-    std.log.info("usart echo ready", .{});
+    usart1.set_interrupts(.{ .rx = true, .errors = true, .idle = true });
+    usart1.enable_interrupt();
+
+    std.log.info("usart interrupt echo ready", .{});
 
     var tx_buffer: [64]u8 = undefined;
     var tx = usart1.writer(&tx_buffer);
     tx.interface.writeAll("usart echo\r\n") catch {};
     tx.interface.flush() catch {};
 
-    var rx_buffer: [1]u8 = undefined;
-    var rx = usart1.reader(&rx_buffer);
-
     while (true) {
-        const byte = try rx.interface.takeByte();
-        try tx.interface.print("{c}", .{byte});
-        try tx.interface.flush();
+        while (!@atomicLoad(bool, &rx_pending, .acquire)) cpu.wfi();
+        @atomicStore(bool, &rx_pending, false, .release);
+        const byte = @atomicLoad(u8, &rx_byte, .acquire);
+        tx.interface.print("{c}", .{byte}) catch {};
+        tx.interface.flush() catch {};
     }
 }

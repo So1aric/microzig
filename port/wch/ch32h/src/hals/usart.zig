@@ -1,6 +1,7 @@
 const std = @import("std");
 const microzig = @import("microzig");
 
+const cpu = microzig.cpu;
 const clocks = microzig.hal.clocks;
 const gpio = microzig.hal.gpio;
 const Peripherals = microzig.hal.Peripherals;
@@ -285,7 +286,12 @@ pub const Usart = struct {
         return @intCast(Peripherals.to_reg(self.instance).DATAR.read().DR);
     }
 
-    fn check_errors(self: Usart) ReceiveError!void {
+    /// Reads the error flags and clears them if any are set.
+    ///
+    /// The clearing sequence (read `STATR`, then read `DATAR`) also swallows a
+    /// pending `RXNE` byte if one is latched at the same time, so in an
+    /// interrupt handler call this *before* `is_readable`/`read_byte`.
+    pub fn check_errors(self: Usart) ReceiveError!void {
         const regs = Peripherals.to_reg(self.instance);
         const status = regs.STATR.read();
 
@@ -340,6 +346,91 @@ pub const Usart = struct {
 
     pub fn read_blocking(self: Usart, buffer: []u8) ReceiveError!usize {
         return self.readv_blocking(&.{buffer});
+    }
+
+    /// USART interrupt sources. Only the receive side is exposed here.
+    /// TODO: a buffered driver might need TXE/TC interrupts.
+    ///
+    /// Usage: enable the sources, unmask the PFIC line and provide a handler.
+    ///
+    /// ```zig
+    /// pub const microzig_options: microzig.Options = .{
+    ///     .interrupts = .{ .USART1 = on_usart1 },
+    /// };
+    ///
+    /// fn on_usart1() callconv(microzig.cpu.riscv_calling_convention) void {
+    ///     const uart = microzig.hal.usart.usart1;
+    ///     uart.check_errors() catch return; // ORE/FE/NE/PE, already cleared
+    ///     if (uart.is_readable()) {
+    ///         const byte = uart.read_byte();
+    ///         // ... consume byte ...
+    ///     }
+    ///     if (uart.is_idle()) uart.clear_idle();
+    /// }
+    /// ```
+    ///
+    /// Do not mix interrupt-driven reception with the blocking `read_*`
+    /// functions on the same instance: they race on `DATAR`. Interrupt-driven
+    /// RX combined with blocking TX is fine (opposite directions).
+    pub const Interrupts = struct {
+        /// RXNEIE: a byte has been received.
+        rx: bool = false,
+        /// IDLEIE: an idle line was detected (end of a burst).
+        idle: bool = false,
+        /// EIE + PEIE: overrun, framing, noise and parity errors.
+        errors: bool = false,
+
+        pub const none: Interrupts = .{};
+        pub const all: Interrupts = .{ .rx = true, .idle = true, .errors = true };
+    };
+
+    /// Enables/disables the configured USART interrupt sources. This only
+    /// writes the peripheral; call `enable_interrupt` to also unmask the IRQ
+    /// in the PFIC.
+    pub fn set_interrupts(self: Usart, cfg: Interrupts) void {
+        const regs = Peripherals.to_reg(self.instance);
+        regs.CTLR1.modify(.{
+            .RXNEIE = @intFromBool(cfg.rx),
+            .IDLEIE = @intFromBool(cfg.idle),
+            .PEIE = @intFromBool(cfg.errors),
+        });
+        regs.CTLR3.modify(.{ .EIE = @intFromBool(cfg.errors) });
+    }
+
+    /// The PFIC interrupt number of this USART instance.
+    /// TODO: is this eliminable?
+    pub inline fn irq(self: Usart) cpu.Interrupt {
+        return switch (self.instance) {
+            .USART1 => .USART1,
+            .USART2 => .USART2,
+            .USART3 => .USART3,
+            .USART4 => .USART4,
+            .USART5 => .USART5,
+            .USART6 => .USART6,
+            .USART7 => .USART7,
+            .USART8 => .USART8,
+        };
+    }
+
+    /// Unmasks this instance's interrupt in the PFIC. A handler must be
+    /// provided via `microzig_options.interrupts`.
+    pub fn enable_interrupt(comptime self: Usart) void {
+        cpu.interrupt.enable(self.irq());
+    }
+
+    pub fn disable_interrupt(comptime self: Usart) void {
+        cpu.interrupt.disable(self.irq());
+    }
+
+    pub inline fn is_idle(self: Usart) bool {
+        return Peripherals.to_reg(self.instance).STATR.read().IDLE == 1;
+    }
+
+    /// Clears the IDLE flag (read `STATR`, then read `DATAR`).
+    pub fn clear_idle(self: Usart) void {
+        const regs = Peripherals.to_reg(self.instance);
+        _ = regs.STATR.read();
+        _ = regs.DATAR.read();
     }
 
     pub const Writer = struct {

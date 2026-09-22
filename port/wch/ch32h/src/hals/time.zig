@@ -16,8 +16,10 @@ const Systick = struct {
         mode: enum { up, down },
         clock_source: enum { hclk_div_8, hclk },
 
-        auto_reload: bool,
+        auto_reload: bool = false,
         compare_value: u32 = 0,
+
+        interrupt: bool = false,
     };
 
     pub inline fn apply(stk: Systick, comptime cfg: Config) void {
@@ -28,7 +30,7 @@ const Systick = struct {
                     .DOWN_MODE = @backingInt(cfg.mode),
                     .AUTO_RELOAD = @intFromBool(cfg.auto_reload),
                     .NO_RTC = @backingInt(cfg.clock_source),
-                    .IE = 0,
+                    .IE = @intFromBool(cfg.interrupt),
                     .EN = 0,
                 });
                 if (cfg.auto_reload) STK.CMP0.raw = cfg.compare_value;
@@ -39,7 +41,7 @@ const Systick = struct {
                     .DOWN_MODE = @backingInt(cfg.mode),
                     .AUTO_RELOAD = @intFromBool(cfg.auto_reload),
                     .NO_RTC = @backingInt(cfg.clock_source),
-                    .IE = 0,
+                    .IE = @intFromBool(cfg.interrupt),
                     .EN = 0,
                 });
                 if (cfg.auto_reload) STK.CMP1.raw = cfg.compare_value;
@@ -56,14 +58,15 @@ const Systick = struct {
 
     pub inline fn enable_interrupt(stk: Systick) void {
         switch (stk.id) {
-            0 => {
-                STK.CTLR0.modify(.{ .IE = 1 });
-                interrupt.enable(.SysTick0);
-            },
-            1 => {
-                STK.CTLR1.modify(.{ .IE = 1 });
-                interrupt.enable(.SysTick1);
-            },
+            0 => interrupt.enable(.SysTick0),
+            1 => interrupt.enable(.SysTick1),
+        }
+    }
+
+    pub inline fn disable_interrupt(stk: Systick) void {
+        switch (stk.id) {
+            0 => interrupt.disable(.SysTick0),
+            1 => interrupt.disable(.SysTick1),
         }
     }
 

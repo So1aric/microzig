@@ -39,6 +39,7 @@ pub fn main() !void {
         .clock_source = .hclk,
         .auto_reload = true,
         .compare_value = 50_000_000,
+        .interrupt = true,
     });
     stk.enable_interrupt();
     stk.enable();
