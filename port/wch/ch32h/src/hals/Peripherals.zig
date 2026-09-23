@@ -4,6 +4,8 @@ pub const All = helper.create_peripheral_enum(&.{
     "AFIO", // should this stay here?
     "GPIO",
     "USART",
+    "DMA1",
+    "DMA2",
 });
 
 pub const GPIO = helper.sub_peripheral_enum(All, &.{"GPIO"}, null);

@@ -23,6 +23,9 @@ pub fn enable(peripheral: Peripherals.All) void {
         .USART6 => RCC.HB1PCENR.modify(.{ .USART6EN = 1 }),
         .USART7 => RCC.HB1PCENR.modify(.{ .USART7EN = 1 }),
         .USART8 => RCC.HB1PCENR.modify(.{ .USART8EN = 1 }),
+
+        .DMA1 => RCC.HBPCENR.modify(.{ .DMA1EN = 1 }),
+        .DMA2 => RCC.HBPCENR.modify(.{ .DMA2EN = 1 }),
     }
 }
 

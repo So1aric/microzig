@@ -3,6 +3,7 @@ const microzig = @import("microzig");
 
 const cpu = microzig.cpu;
 const clocks = microzig.hal.clocks;
+const dma = microzig.hal.dma;
 const gpio = microzig.hal.gpio;
 const Peripherals = microzig.hal.Peripherals;
 
@@ -25,9 +26,8 @@ const AfEntry = struct {
     af: u4,
 };
 
-/// Pin alternate-function mapping, taken from the CH32H417 datasheet
-/// (CH32H417/H416/H415, V1.9, USART alternate function table). Any
-/// combination not listed here is rejected by `af_for` at compile time.
+/// Pin alternate-function mapping, see `CH32H417DS0.pdf` Table 2-2-9.
+/// Any combination not listed here is rejected by `af_for` at compile time.
 const af_table = [_]AfEntry{
     // USART1
     .{ .instance = .USART1, .function = .tx, .port = .GPIOA, .number = 9, .af = 7 },
@@ -170,7 +170,7 @@ fn af_for(comptime instance: Peripherals.USART, comptime pin: gpio.Pin, comptime
 pub const Usart = struct {
     instance: Peripherals.USART,
 
-    // should I use @"5" or five?
+    // TODO: should I use @"5" or five?
     pub const WordBits = enum { five, six, seven, eight, nine };
     pub const StopBits = enum { one, half, two, one_and_half };
     pub const Parity = enum { none, even, odd };
@@ -184,46 +184,49 @@ pub const Usart = struct {
         stop_bits: StopBits = .one,
         parity: Parity = .none,
         flow_control: FlowControl = .none,
+
+        tx_dma: bool = false,
+        rx_dma: bool = false,
     };
 
-    pub fn apply(comptime self: Usart, comptime config: Config) void {
+    pub fn apply(comptime self: Usart, comptime cfg: Config) void {
         clocks.enable(Peripherals.to_peripheral(self.instance));
 
-        config.tx_pin.apply(.{
+        cfg.tx_pin.apply(.{
             .mode = .{ .output = .alternate_function_push_pull },
             .speed = .max_50MHz,
             .pull = .disabled,
-            .alternate_function = af_for(self.instance, config.tx_pin, .tx),
+            .alternate_function = af_for(self.instance, cfg.tx_pin, .tx),
         });
-        config.rx_pin.apply(.{
+        cfg.rx_pin.apply(.{
             .mode = .{ .input = .floating },
             .speed = .max_50MHz,
             .pull = .up,
-            .alternate_function = af_for(self.instance, config.rx_pin, .rx),
+            .alternate_function = af_for(self.instance, cfg.rx_pin, .rx),
         });
 
         const regs = Peripherals.to_reg(self.instance);
         regs.CTLR1.modify(.{ .UE = 0 });
 
-        regs.CTLR2.modify(.{ .STOP = switch (config.stop_bits) {
+        regs.CTLR2.modify(.{ .STOP = switch (cfg.stop_bits) {
             .one => 0b00,
             .half => 0b01,
             .two => 0b10,
             .one_and_half => 0b11,
         } });
 
-        const word_m: u1 = switch (config.word_bits) {
+        const word_m: u1 = switch (cfg.word_bits) {
             .five, .six, .seven, .eight => 0,
             .nine => 1,
         };
-        const word_m_ext: u2 = switch (config.word_bits) {
+        const word_m_ext: u2 = switch (cfg.word_bits) {
             .five => 0b11,
             .six => 0b10,
             .seven => 0b01,
             .eight, .nine => 0b00,
         };
-        const parity_enable: u1 = if (config.parity == .none) 0 else 1;
-        const parity_select: u1 = switch (config.parity) {
+        const parity_enable: u1 = if (cfg.parity == .none) 0 else 1;
+        const parity_select: u1 = switch (cfg.parity) {
             .none, .even => 0,
             .odd => 1,
         };
@@ -238,16 +241,21 @@ pub const Usart = struct {
         });
 
         regs.CTLR3.modify(.{
-            .RTSE = if (config.flow_control == .RTS or config.flow_control == .CTS_RTS) 1 else 0,
-            .CTSE = if (config.flow_control == .CTS or config.flow_control == .CTS_RTS) 1 else 0,
+            .RTSE = if (cfg.flow_control == .RTS or cfg.flow_control == .CTS_RTS) 1 else 0,
+            .CTSE = if (cfg.flow_control == .CTS or cfg.flow_control == .CTS_RTS) 1 else 0,
         });
 
-        self.set_baudrate(config.baud_rate);
+        self.set_baudrate(cfg.baud_rate);
         regs.CTLR1.modify(.{ .UE = 1 });
+
+        regs.CTLR3.modify(.{
+            .DMAT = @intFromBool(cfg.tx_dma),
+            .DMAR = @intFromBool(cfg.rx_dma),
+        });
     }
 
-    /// Sets the baud rate divisor. On CH32H417 the USART is clocked from HCLK
-    /// and always uses 16x oversampling, matching the WCH EVT `USART_Init`.
+    /// Sets the baud rate divisor. On CH32H417 the USART is
+    /// clocked from HCLK and always uses 16x oversampling.
     pub fn set_baudrate(self: Usart, baud_rate: u32) void {
         const regs = Peripherals.to_reg(self.instance);
         const hclk: u64 = clocks.get_freqs().hclk;
@@ -288,9 +296,8 @@ pub const Usart = struct {
 
     /// Reads the error flags and clears them if any are set.
     ///
-    /// The clearing sequence (read `STATR`, then read `DATAR`) also swallows a
-    /// pending `RXNE` byte if one is latched at the same time, so in an
-    /// interrupt handler call this *before* `is_readable`/`read_byte`.
+    /// NOTE: call this *before* `is_readable` / `read_byte`, or errors
+    /// would be cleared.
     pub fn check_errors(self: Usart) ReceiveError!void {
         const regs = Peripherals.to_reg(self.instance);
         const status = regs.STATR.read();
@@ -348,28 +355,7 @@ pub const Usart = struct {
         return self.readv_blocking(&.{buffer});
     }
 
-    /// USART interrupt sources. Only the receive side is exposed here.
-    /// TODO: a buffered driver might need TXE/TC interrupts.
-    ///
-    /// Usage: enable the sources, unmask the PFIC line and provide a handler.
-    ///
-    /// ```zig
-    /// pub const microzig_options: microzig.Options = .{
-    ///     .interrupts = .{ .USART1 = on_usart1 },
-    /// };
-    ///
-    /// fn on_usart1() callconv(microzig.cpu.riscv_calling_convention) void {
-    ///     const uart = microzig.hal.usart.usart1;
-    ///     uart.check_errors() catch return; // ORE/FE/NE/PE, already cleared
-    ///     if (uart.is_readable()) {
-    ///         const byte = uart.read_byte();
-    ///         // ... consume byte ...
-    ///     }
-    ///     if (uart.is_idle()) uart.clear_idle();
-    /// }
-    /// ```
-    ///
-    /// Do not mix interrupt-driven reception with the blocking `read_*`
+    /// NOTE: Don't mix interrupt-driven reception with the blocking `read_*`
     /// functions on the same instance: they race on `DATAR`. Interrupt-driven
     /// RX combined with blocking TX is fine (opposite directions).
     pub const Interrupts = struct {
@@ -384,9 +370,6 @@ pub const Usart = struct {
         pub const all: Interrupts = .{ .rx = true, .idle = true, .errors = true };
     };
 
-    /// Enables/disables the configured USART interrupt sources. This only
-    /// writes the peripheral; call `enable_interrupt` to also unmask the IRQ
-    /// in the PFIC.
     pub fn set_interrupts(self: Usart, cfg: Interrupts) void {
         const regs = Peripherals.to_reg(self.instance);
         regs.CTLR1.modify(.{
@@ -397,7 +380,6 @@ pub const Usart = struct {
         regs.CTLR3.modify(.{ .EIE = @intFromBool(cfg.errors) });
     }
 
-    /// The PFIC interrupt number of this USART instance.
     /// TODO: is this eliminable?
     pub inline fn irq(self: Usart) cpu.Interrupt {
         return switch (self.instance) {
@@ -412,8 +394,6 @@ pub const Usart = struct {
         };
     }
 
-    /// Unmasks this instance's interrupt in the PFIC. A handler must be
-    /// provided via `microzig_options.interrupts`.
     pub fn enable_interrupt(comptime self: Usart) void {
         cpu.interrupt.enable(self.irq());
     }
@@ -431,6 +411,23 @@ pub const Usart = struct {
         const regs = Peripherals.to_reg(self.instance);
         _ = regs.STATR.read();
         _ = regs.DATAR.read();
+    }
+
+    pub fn dma_target(self: Usart, kind: enum { tx, rx }) dma.Target {
+        const request: dma.Request = switch (self.instance) {
+            .USART1 => if (kind == .tx) .USART1_TX else .USART1_RX,
+            .USART2 => if (kind == .tx) .USART2_TX else .USART2_RX,
+            .USART3 => if (kind == .tx) .USART3_TX else .USART3_RX,
+            .USART4 => if (kind == .tx) .USART4_TX else .USART4_RX,
+            .USART5 => if (kind == .tx) .USART5_TX else .USART5_RX,
+            .USART6 => if (kind == .tx) .USART6_TX else .USART6_RX,
+            .USART7 => if (kind == .tx) .USART7_TX else .USART7_RX,
+            .USART8 => if (kind == .tx) .USART8_TX else .USART8_RX,
+        };
+        return .{
+            .addr = @intFromPtr(&Peripherals.to_reg(self.instance).DATAR),
+            .request = request,
+        };
     }
 
     pub const Writer = struct {

@@ -31,6 +31,8 @@ const examples = [_][]const u8{
     "interrupts",
     "systick",
     "usart",
+    "dma",
+    "usart_dma",
 };
 
 pub fn build(b: *std.Build) void {
